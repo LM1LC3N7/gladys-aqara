@@ -1,177 +1,192 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Aqara",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Aqara hubs and their devices through the Aqara Open API (cloud).",
+    "fr": "Hubs Aqara et leurs appareils par l’API ouverte Aqara (cloud)."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-aqara:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-aqara/main/cover.png",
+  "categories": ["protocols", "lighting", "environment"],
+  "transports": ["cloud"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
       "label": { "en": "Getting started", "fr": "Pour commencer" },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Reads the devices of your Aqara account (sensors, plugs, lights, curtains behind a hub M2, M3…) through the official Aqara Open API, with a developer project you create on developer.aqara.com. Turning off and closing are never held. Locks, cameras, valves, garage doors and heating stay read only. Unofficial, not affiliated with Aqara; never tested with a real device.",
+        "fr": "Lit les appareils de votre compte Aqara (capteurs, prises, lumières, rideaux derrière un hub M2, M3…) par l’API ouverte officielle d’Aqara, avec un projet développeur que vous créez sur developer.aqara.com. Éteindre et fermer ne sont jamais bloqués. Serrures, caméras, vannes, portes de garage et chauffage restent en lecture seule. Non officielle, sans lien avec Aqara ; jamais testée avec un vrai appareil."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-aqara/blob/main/docs/en.md",
+          "label": { "en": "Documentation", "fr": "Documentation" }
+        },
+        {
+          "url": "https://developer.aqara.com/",
+          "label": { "en": "Aqara developer platform", "fr": "Plateforme développeur Aqara" }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
+      "key": "region",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "label": { "en": "Aqara server", "fr": "Serveur Aqara" },
+      "description": {
+        "en": "The server of your Aqara account (the one chosen in the Aqara Home app).",
+        "fr": "Le serveur de votre compte Aqara (celui choisi dans l’app Aqara Home)."
+      },
       "required": false,
-      "default": "celsius",
+      "default": "ger",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        { "value": "ger", "label": { "en": "Europe", "fr": "Europe" } },
+        { "value": "usa", "label": { "en": "United States", "fr": "États-Unis" } },
+        { "value": "cn", "label": { "en": "China mainland", "fr": "Chine continentale" } },
+        { "value": "kr", "label": { "en": "South Korea", "fr": "Corée du Sud" } },
+        { "value": "ru", "label": { "en": "Russia", "fr": "Russie" } },
+        { "value": "sg", "label": { "en": "Singapore", "fr": "Singapour" } }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "project_intro",
+      "type": "section",
+      "label": { "en": "Developer project", "fr": "Projet développeur" },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "On developer.aqara.com, create a project (Console, Project Management); once it is approved, its details show the App ID, and Key Management the Key ID and the App Key.",
+        "fr": "Sur developer.aqara.com, créez un projet (Console, Project Management) ; une fois approuvé, son détail donne l’App ID, et Key Management le Key ID et l’App Key."
+      }
+    },
+    {
+      "key": "app_id",
+      "type": "string",
+      "label": { "en": "App ID", "fr": "App ID" },
+      "required": false
+    },
+    {
+      "key": "key_id",
+      "type": "string",
+      "label": { "en": "Key ID", "fr": "Key ID" },
+      "placeholder": { "en": "e.g. K.123456789", "fr": "ex. K.123456789" },
+      "required": false
+    },
+    {
+      "key": "app_key",
+      "type": "secret",
+      "label": { "en": "App Key", "fr": "App Key" },
+      "description": {
+        "en": "Kept by Gladys in its database, never shown again, used only to sign the requests sent to Aqara (the key itself never leaves).",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, utilisé seulement pour signer les requêtes envoyées à Aqara (la clé elle-même ne sort jamais)."
+      },
+      "required": false
+    },
+    {
+      "key": "auth_intro",
+      "type": "section",
+      "label": { "en": "Authorization", "fr": "Autorisation" },
+      "description": {
+        "en": "Enter the e-mail address or the phone number of your Aqara account and save. Then click \"Send the verification code\": Aqara sends a code to that account (valid 10 minutes). Enter it with the \"Authorize\" button: the two tokens below are filled in by the integration. A code is sent only when you click.",
+        "fr": "Saisissez l’adresse e-mail ou le numéro de téléphone de votre compte Aqara et enregistrez. Cliquez ensuite sur « Envoyer le code de vérification » : Aqara envoie un code à ce compte (valable 10 minutes). Saisissez-le avec le bouton « Autoriser » : les deux jetons ci-dessous sont remplis par l’intégration. Un code n’est envoyé que sur votre clic."
+      }
+    },
+    {
+      "key": "account",
+      "type": "string",
+      "label": {
+        "en": "Aqara account (e-mail or phone)",
+        "fr": "Compte Aqara (e-mail ou téléphone)"
+      },
+      "placeholder": { "en": "e.g. me@example.com", "fr": "ex. moi@example.com" },
+      "required": false
+    },
+    {
+      "key": "access_token",
+      "type": "secret",
+      "label": {
+        "en": "Access token (filled in by \"Authorize\")",
+        "fr": "Jeton d’accès (rempli par « Autoriser »)"
+      },
+      "description": {
+        "en": "Kept by Gladys in its database, never shown again, sent only to Aqara.",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à Aqara."
+      },
+      "required": false
+    },
+    {
+      "key": "refresh_token",
+      "type": "secret",
+      "label": {
+        "en": "Refresh token (filled in by \"Authorize\")",
+        "fr": "Jeton de renouvellement (rempli par « Autoriser »)"
+      },
+      "description": {
+        "en": "Kept by Gladys in its database, never shown again, sent only to Aqara.",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à Aqara."
+      },
+      "required": false
+    },
+    {
+      "key": "reads_intro",
+      "type": "section",
+      "label": { "en": "Reads and quota", "fr": "Lectures et quota" },
+      "description": {
+        "en": "Each read costs one call per 50 values (plus the device list every 10 minutes). The integration stops reading when the daily budget below is spent (UTC day); turning off and closing are still sent.",
+        "fr": "Chaque lecture coûte un appel par tranche de 50 valeurs (plus la liste des appareils toutes les 10 minutes). L’intégration cesse de lire quand le budget quotidien ci-dessous est épuisé (jour UTC) ; éteindre et fermer sont toujours envoyés."
+      }
+    },
+    {
+      "key": "poll_seconds",
+      "type": "number",
+      "label": { "en": "Read interval (s)", "fr": "Intervalle de lecture (s)" },
+      "description": {
+        "en": "How often the values are read: 60 s at least.",
+        "fr": "Fréquence de lecture des valeurs : 60 s au moins."
       },
       "required": false,
-      "default": 300,
+      "default": 120,
       "min": 60,
       "max": 3600
+    },
+    {
+      "key": "daily_calls",
+      "type": "number",
+      "label": { "en": "Daily budget of API calls", "fr": "Budget quotidien d’appels d’API" },
+      "description": {
+        "en": "Set it below the quota of your developer project.",
+        "fr": "Réglez-le sous le quota de votre projet développeur."
+      },
+      "required": false,
+      "default": 3000,
+      "min": 200,
+      "max": 100000
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "send_code",
+      "label": { "en": "Send the verification code", "fr": "Envoyer le code de vérification" },
       "timeout_seconds": 30
     },
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
+      "key": "authorize",
+      "label": { "en": "Authorize", "fr": "Autoriser" },
+      "timeout_seconds": 30,
       "fields": [
         {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
+          "key": "code",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
-      "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": { "en": "Verification code", "fr": "Code de vérification" },
           "required": true
         }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
       ]
-    }
-  ],
-  "widgets": [
+    },
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "key": "test_connection",
+      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "timeout_seconds": 30
     }
   ]
 }
