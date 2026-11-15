@@ -138,7 +138,7 @@ const int = (value, min, max) =>
   Number.isInteger(value) && value >= min && value <= max ? value : undefined;
 const SEEN_KEY =
   /^ext:[A-Za-z0-9_-]{1,64}:device:[A-Za-z0-9]{1,24}-[A-Za-z0-9_-]{1,64}:e(?:0|[1-9]\d{0,3})-[a-z0-9]{1,16}$/;
-const STOP_KEY = /^e(?:0|[1-9]\d{0,3})-(?:onoff|position)$/;
+const STOP_KEY = /^e(?:0|[1-9]\d{0,3})-onoff$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const wall = (value, now) =>
   Number.isFinite(value) && value > 0 && value <= now ? value : undefined;

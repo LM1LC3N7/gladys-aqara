@@ -397,7 +397,9 @@ export function featuresOf(description) {
         functionCode: current.functionCode,
         traitCode: 'CurrentPositionPercentage',
         kind: 'position',
-        writable: Boolean(commandable && target?.writable),
+        // Read only in v1: the documentation gives no direction for the positions (HomeKit
+        // and Matter are opposite), so nothing is ever written until a tester confirms it.
+        writable: false,
         write: target
           ? { functionCode: target.functionCode, traitCode: 'TargetPositionPercentage' }
           : undefined,
@@ -555,7 +557,7 @@ export const WRITE_PARAM = 'aqara_write_';
  * sent before any read: no description in memory yet), else undefined.
  */
 export function featureFromParams(device, key) {
-  const match = /^e((?:0|[1-9]\d{0,3}))-(onoff|brightness|position)$/.exec(key);
+  const match = /^e((?:0|[1-9]\d{0,3}))-(onoff|brightness)$/.exec(key);
   if (!match) return undefined;
   const params = Array.isArray(device?.params) ? device.params : [];
   const read = (k) => {
@@ -578,17 +580,6 @@ export function featureFromParams(device, key) {
       kind,
       functionCode: w.functionCode,
       traitCode: 'OnOff',
-      writable: true,
-    };
-  if (kind === 'position' && w.traitCode === 'TargetPositionPercentage')
-    return {
-      key,
-      label: kind,
-      endpoint,
-      kind,
-      functionCode: undefined,
-      traitCode: 'CurrentPositionPercentage',
-      write: w,
       writable: true,
     };
   if (kind === 'brightness' && w.traitCode === 'CurrentLevel')
@@ -652,8 +643,9 @@ export function parseExternalId(externalId, prefix) {
 
 /**
  * The command of a Gladys value for a feature: `{ protective, value, trait }`
- * (`value` as the API takes it), else undefined (invalid). Turning off and
- * closing (position 0) are protective; a brightness 0 is a turn off.
+ * (`value` as the API takes it), else undefined (invalid). Turning off is
+ * protective; a brightness 0 is a turn off. A position command is built but
+ * never sent: positions are read only in v1 (not `writable`).
  */
 export function commandOf(feature, value, features = []) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;

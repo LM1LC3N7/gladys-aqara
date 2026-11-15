@@ -84,6 +84,13 @@ const KINDS = {
   budget: both('the daily call budget is spent', 'le budget d’appels du jour est épuisé'),
   grant: both('the authorization is over', 'l’autorisation a pris fin'),
   config: both('the configuration is incomplete', 'la configuration est incomplète'),
+  'fresh-token': both(
+    'Aqara refused an access token it had just renewed (read again later, spaced)',
+    'Aqara a refusé un jeton d’accès qu’il venait de renouveler (relu plus tard, espacé)',
+  ),
+  superseded: both('a turn off came after it', 'une extinction est arrivée après'),
+  late: both('no answer in time', 'pas de réponse à temps'),
+  aborted: both('stopped', 'arrêté'),
 };
 
 const kindText = (kind, code) => {
@@ -134,8 +141,8 @@ export const T = {
     ),
   budgetSpent: (calls) =>
     both(
-      `The daily budget of ${calls} API calls is spent: reads resume tomorrow (UTC); turning off and closing still work`,
-      `Le budget quotidien de ${calls} appels d’API est épuisé : les lectures reprennent demain (UTC) ; éteindre et fermer marchent toujours`,
+      `The daily budget of ${calls} API calls is spent: reads resume tomorrow (UTC); turning off still works`,
+      `Le budget quotidien de ${calls} appels d’API est épuisé : les lectures reprennent demain (UTC) ; éteindre marche toujours`,
     ),
   partlyRead: both(
     'Some device descriptions could not be read (tried again later)',
@@ -151,8 +158,8 @@ export const T = {
   ),
   stopLost: (names) =>
     both(
-      `Not confirmed by Aqara: turning off or closing ${names.join(', ')}`,
-      `Non confirmé par Aqara : extinction ou fermeture de ${names.join(', ')}`,
+      `Not confirmed by Aqara: turning off ${names.join(', ')}`,
+      `Non confirmé par Aqara : extinction de ${names.join(', ')}`,
     ),
   reading: both('Reading Aqara…', 'Lecture d’Aqara…'),
   testTooSoon: (ms) =>
@@ -218,16 +225,16 @@ export const T = {
     'La liste des appareils d’Aqara est trop ancienne (aucune lecture depuis 15 minutes)',
   ),
   storeCommand: both(
-    'The /data folder cannot be read: only turning off and closing are sent',
-    'Le dossier /data est illisible : seuls éteindre et fermer sont envoyés',
+    'The /data folder cannot be read: only turning off is sent',
+    'Le dossier /data est illisible : seule l’extinction est envoyée',
   ),
   pausedCommand: both(
-    'Aqara asked to slow down: only turning off and closing are sent during the pause',
-    'Aqara demande de ralentir : seuls éteindre et fermer sont envoyés pendant la pause',
+    'Aqara asked to slow down: only turning off is sent during the pause',
+    'Aqara demande de ralentir : seule l’extinction est envoyée pendant la pause',
   ),
   supersededByStop: both(
-    'Not sent: a turn off or a close came after it',
-    'Non envoyé : une extinction ou une fermeture est arrivée après',
+    'Not sent: a turn off came after it',
+    'Non envoyé : une extinction est arrivée après',
   ),
   notSentCommand: (kind) => {
     const text = kindText(kind);

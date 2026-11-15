@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // The states sent to Gladys, within its 300 states per minute.
 //
-// Every read of Telldus brings many values at once. The publisher keeps the LAST value of each feature with the
+// Every read of Aqara brings many values at once. The publisher keeps the LAST value of each feature with the
 // time it came, sends the pending ones every second within a per-minute
 // budget, skips the unchanged ones (publishChangedStates), spaces the
 // measurements of a same feature (TIMINGS.measurementSpacing) and drops a

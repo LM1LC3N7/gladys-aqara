@@ -8,10 +8,11 @@ real device.
 
 - Sensors (temperature, humidity, pressure, light, CO2, PM2.5, VOC, battery,
   power), door/window, leak, presence, smoke and CO detectors.
-- Plugs and switches, lights (on/off, brightness), curtains (position).
-- Turning off and closing are never held by a pause, the daily budget or a
-  read in progress; confirmed by the reads that follow.
-- Locks, cameras, valves, garage doors and heating stay read only.
+- Plugs and switches, lights (on/off, brightness); curtain positions read only.
+- Turning off is never held by a pause, the daily budget or a read in
+  progress; confirmed by the reads that follow.
+- Curtain positions, locks, cameras, valves, garage doors, heating and
+  cooking stay read only.
 
 User documentation: [English](docs/en.md), [Français](docs/fr.md).
 

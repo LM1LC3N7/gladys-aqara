@@ -88,7 +88,7 @@ const refusal = (text) => Object.assign(new Error(text.en), { text });
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/;
 const CODE_RE = /^[A-Za-z0-9]{4,12}$/;
 /** Kinds of a failed stop send that are worth trying again (nothing was applied, it may pass later). */
-const TRANSIENT = new Set(['rate', 'server', 'network', 'timeout', 'budget']);
+const TRANSIENT = new Set(['rate', 'server', 'network', 'timeout', 'budget', 'fresh-token']);
 const TRANSIENT_CODES = new Set([602, 612]);
 
 /** The tokens of an authorization answer, else undefined. */
@@ -168,6 +168,7 @@ export class AqaraApp {
     this.storeTimer = undefined;
     this.configTries = 0;
     this.secondary = { failures: 0, until: 0 };
+    this.tokenWait = { failures: 0, until: 0 };
     this.refreshing = undefined;
     this.authorizing = undefined;
     this.statusKey = undefined;
@@ -514,12 +515,21 @@ export class AqaraApp {
    * in the daily budget. Throws an ApiError ('grant' when the authorization
    * is over, 'budget' when nothing was sent for the budget).
    */
-  async call(intent, data, { protective = false, signal, timeoutMs, onSent } = {}) {
+  async call(intent, data, { protective = false, signal, timeoutMs, onSent, guard } = {}) {
     const api = this.api;
+    const gen = this.generation;
     if (!api) throw new ApiError('config', { sent: false });
     if (!this.tokens()) throw new ApiError('grant', { sent: false });
-    await this.renewSoon(protective);
+    // A stop never waits for a renewal while its token has not expired.
+    if (!protective) await this.renewSoon(false);
     for (let attempt = 0; ; attempt += 1) {
+      // Nothing leaves after stop(); a start checks again right before its bytes (stop, deadline).
+      if (this.stopped || gen !== this.generation) throw new ApiError('aborted', { sent: false });
+      if (guard) {
+        const why = guard();
+        if (why) throw new ApiError(why, { sent: false });
+      }
+      if (signal?.aborted) throw new ApiError('aborted', { sent: false });
       if (!this.countCall(protective)) throw new ApiError('budget', { sent: false });
       try {
         return await api.call(intent, data, {
@@ -535,9 +545,9 @@ export class AqaraApp {
           continue;
         }
         if (err.kind === 'expired' || err.kind === 'token') {
-          // Refused just after a renewal: the authorization is over.
-          this.grantRefusedNow();
-          throw new ApiError('grant', { sent: true, code: err.code });
+          // Refused just after an accepted renewal: no proof the authorization is over
+          // (the refresh token was just accepted). Not read, spaced; nothing is held by it.
+          throw new ApiError('fresh-token', { sent: true, code: err.code });
         }
         throw err;
       }
@@ -573,6 +583,10 @@ export class AqaraApp {
     const tokens = this.tokens();
     const api = this.api;
     if (!tokens || !api) throw new ApiError('grant', { sent: false });
+    // A refresh token Aqara refused is never sent again (not by a click, not by a stop).
+    if (this.grantRefused() || this.grantRefusedProven())
+      throw new ApiError('grant', { sent: false });
+    if (this.stopped) throw new ApiError('aborted', { sent: false });
     if (!this.countCall(protective)) throw new ApiError('budget', { sent: false });
     let res;
     try {
@@ -583,7 +597,7 @@ export class AqaraApp {
       );
     } catch (err) {
       if (err.kind === 'keys') this.keysRefusedNow();
-      if (['refresh', 'token', 'expired'].includes(err.kind)) {
+      if (err.kind === 'refresh') {
         this.grantRefusedNow();
         throw new ApiError('grant', { sent: true, code: err.code });
       }
@@ -803,9 +817,15 @@ export class AqaraApp {
       this.schedulePoll(this.pauseUntil - this.monotonic() + 1);
       return;
     }
+    if (this.tokenWait.until > this.monotonic()) {
+      this.schedulePoll(this.tokenWait.until - this.monotonic() + 1);
+      return;
+    }
     await this.read(gen);
     if (gen !== this.generation || this.stopped) return;
-    const next = this.paused() ? this.pauseUntil - this.monotonic() + 1 : this.config.pollMs;
+    let next = this.paused() ? this.pauseUntil - this.monotonic() + 1 : this.config.pollMs;
+    if (this.tokenWait.until > this.monotonic())
+      next = Math.max(next, this.tokenWait.until - this.monotonic() + 1);
     if (this.ready()) this.schedulePoll(next);
   }
 
@@ -866,6 +886,7 @@ export class AqaraApp {
     }
     if (gen !== this.generation) return this.lastResult;
     this.pauseOk();
+    this.tokenWait = { failures: 0, until: 0 };
     this.lastResult = { ok: true };
     this.publishDiscovery();
     this.publishStatus();
@@ -1054,6 +1075,13 @@ export class AqaraApp {
   readFailed(err) {
     this.logger?.warn(`Aqara read failed (${this.redact(err.message)})`);
     if (err.kind === 'rate' || err.kind === 'server') this.pause(err);
+    if (err.kind === 'fresh-token') {
+      // A token refused right after its renewal: not read, spaced (doubled up to an hour).
+      this.tokenWait.failures += 1;
+      this.tokenWait.until =
+        this.monotonic() +
+        Math.min(this.config.pollMs * 2 ** this.tokenWait.failures, TIMINGS.secondaryMax);
+    }
     this.lastResult = {
       ok: false,
       kind: err.kind === 'too-large' ? 'bad' : err.kind,
@@ -1148,7 +1176,7 @@ export class AqaraApp {
 
   // --- Commands ----------------------------------------------------------------
 
-  /** A command from Gladys. Turning off and closing are never held; anything else is checked first. */
+  /** A command from Gladys. Turning off is never held; anything else is checked first. */
   async setValue(device, feature, value) {
     const target = parseExternalId(feature?.external_id, `ext:${this.gladys.selector}:`);
     if (!target) throw refusal(T.invalidValue);
@@ -1272,6 +1300,16 @@ export class AqaraApp {
     }
   }
 
+  /** A stop no read confirmed: ended and named in the status. */
+  stopUnconfirmed(stop) {
+    this.lostStops = [
+      ...this.lostStops.filter((n) => n !== this.stopName(stop)),
+      this.stopName(stop),
+    ].slice(-10);
+    this.publishStatus();
+    this.endStop(`${stop.did}|${stop.key}`);
+  }
+
   endStop(key) {
     const stop = this.stops.get(key);
     if (!stop) return;
@@ -1282,9 +1320,9 @@ export class AqaraApp {
     this.save();
   }
 
-  /** The value a stop writes (turn off: false; close: 0). */
-  stopValue(stop) {
-    return stop.feature.kind === 'position' ? 0 : false;
+  /** The value a stop writes (turn off: false; positions are read only in v1). */
+  stopValue() {
+    return false;
   }
 
   /**
@@ -1376,7 +1414,8 @@ export class AqaraApp {
       stop.timer = this.timers.setTimeout(
         () => {
           stop.timer = undefined;
-          if (this.stops.get(key) === stop) this.endStop(key);
+          // No read showed it off in time: said, never taken as done.
+          if (this.stops.get(key) === stop) this.stopUnconfirmed(stop);
         },
         last + TIMINGS.readTimeout + 1_000,
       );
@@ -1427,13 +1466,10 @@ export class AqaraApp {
       this.endStop(key);
       return;
     }
-    if (stop.resends >= TIMINGS.stopResends) {
-      this.lostStops = [
-        ...this.lostStops.filter((n) => n !== this.stopName(stop)),
-        this.stopName(stop),
-      ].slice(-10);
-      this.publishStatus();
-      this.endStop(key);
+    // Without a source date it may have been turned on again after the stop (the Aqara app, a
+    // wall switch): never fought, said as not confirmed.
+    if (time === undefined || stop.resends >= TIMINGS.stopResends) {
+      this.stopUnconfirmed(stop);
       return;
     }
     stop.resends += 1;
@@ -1454,12 +1490,17 @@ export class AqaraApp {
     if (this.budgetLeft() <= 0) return T.budgetSpent(this.config.dailyCalls);
     const device = this.devices.get(did);
     if (!device) return T.notKnown;
-    if (this.listAt === undefined || this.monotonic() - this.listAt > TIMINGS.listMaxAge)
+    if (this.listAt === undefined || this.monotonic() - this.listAt > this.listMaxAge())
       return T.listOld;
     const feature = this.featuresOfDevice(device).find((f) => f.key === cmd.feature.key);
     if (!feature || !feature.writable) return T.notCommandable;
     if (this.online.get(did) === false) return T.offline;
     return undefined;
+  }
+
+  /** The age past which the device list is too old for a start: 15 minutes, or two read intervals. */
+  listMaxAge() {
+    return Math.max(TIMINGS.listMaxAge, 2 * (this.config?.pollMs ?? 0));
   }
 
   inCommandLane(key, fn) {
@@ -1482,6 +1523,13 @@ export class AqaraApp {
     const deadline = this.monotonic() + TIMINGS.commandAck;
     let left = false;
     let settled = false;
+    // Cut at the deadline when it has not left yet: a start answered "nothing sent" never leaves later.
+    const abort = new AbortController();
+    const guard = () => {
+      if ((this.stopGen.get(lane) ?? 0) !== gen) return 'superseded';
+      if (settled || this.monotonic() >= deadline) return 'late';
+      return undefined;
+    };
     const work = this.inCommandLane(lane, async () => {
       if ((this.stopGen.get(lane) ?? 0) !== gen) return { refused: T.supersededByStop };
       if (this.monotonic() >= deadline || settled) return { refused: T.notSentCommand('timeout') };
@@ -1508,7 +1556,12 @@ export class AqaraApp {
             },
           ],
         },
-        { timeoutMs: TIMINGS.commandTimeout, onSent: () => (left = true) },
+        {
+          timeoutMs: TIMINGS.commandTimeout,
+          onSent: () => (left = true),
+          signal: abort.signal,
+          guard,
+        },
       );
       const wait = call.then(
         () => undefined,
@@ -1540,9 +1593,11 @@ export class AqaraApp {
       work,
       Math.max(0, deadline - this.monotonic()),
       this.timers,
-      () => ({
-        late: true,
-      }),
+      () => {
+        settled = true;
+        if (!left) abort.abort();
+        return { late: true };
+      },
     );
     settled = true;
     if (result.late) {
@@ -1552,6 +1607,8 @@ export class AqaraApp {
     if (result.ok) return T.sent.en;
     if (result.refused) throw refusal(result.refused);
     const err = result.error;
+    if (err.kind === 'superseded') throw refusal(T.supersededByStop);
+    if (err.kind === 'late') throw refusal(T.notSentCommand('timeout'));
     // A 429 is about the account: pause. A 5xx of one command never pauses the others.
     if (err.kind === 'rate') this.pause(err);
     if (!err.sent && !left) throw refusal(T.notSentCommand(err.kind));
@@ -1650,36 +1707,30 @@ export class AqaraApp {
     if (this.config.errors.length) return T.configMissing(this.config.errors);
     if (this.config.tokenErrors.length) return T.configMissing(this.config.tokenErrors);
     if (!this.tokens()) return T.notAuthorized;
+    // A refused refresh token is never sent again by a click: authorize again.
+    if (this.grantRefused() || this.grantRefusedProven()) return T.grantRefused;
     if (this.paused()) return T.paused(this.pauseUntil - this.monotonic());
     const since = this.lastRead === undefined ? Infinity : this.monotonic() - this.lastRead;
     if (since < TIMINGS.testSpacing) {
       return join(this.resultText(), T.testTooSoon(TIMINGS.testSpacing - since));
     }
     const gen = this.generation;
-    const was = {
-      keys: this.memory.keysRefused,
-      keysText: this.keysRefusedText,
-      grant: this.memory.grantRefused,
-      grantText: this.grantRefusedText,
-    };
-    // The button always tries: a mark may be a collision after a restart.
-    const wasRefused = this.keysRefused() || this.grantRefused();
+    const was = { keys: this.memory.keysRefused, keysText: this.keysRefusedText };
+    // The button always tries the keys: a mark may be a collision after a restart.
+    const wasRefused = this.keysRefused();
     if (wasRefused) {
       this.memory.keysRefused = undefined;
       this.keysRefusedText = undefined;
-      this.memory.grantRefused = undefined;
-      this.grantRefusedText = undefined;
     }
+    this.tokenWait = { failures: 0, until: 0 };
     this.forceList = true;
     await this.read(gen);
     if (gen === this.generation && this.lastResult?.ok && this.ready()) {
       this.schedulePoll(this.config.pollMs);
-    } else if (wasRefused && !this.lastResult?.ok && !this.keysRefused() && !this.grantRefused()) {
-      // Nothing proved the keys and the authorization good: still refused.
+    } else if (wasRefused && !this.lastResult?.ok && !this.keysRefused()) {
+      // Nothing proved the keys good: still refused.
       this.memory.keysRefused = was.keys;
       this.keysRefusedText = was.keysText;
-      this.memory.grantRefused = was.grant;
-      this.grantRefusedText = was.grantText;
       this.save();
     }
     this.publishStatus();

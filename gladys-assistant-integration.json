@@ -18,8 +18,8 @@
       "type": "section",
       "label": { "en": "Getting started", "fr": "Pour commencer" },
       "description": {
-        "en": "Reads the devices of your Aqara account (sensors, plugs, lights, curtains behind a hub M2, M3…) through the official Aqara Open API, with a developer project you create on developer.aqara.com. Turning off and closing are never held. Locks, cameras, valves, garage doors and heating stay read only. Unofficial, not affiliated with Aqara; never tested with a real device.",
-        "fr": "Lit les appareils de votre compte Aqara (capteurs, prises, lumières, rideaux derrière un hub M2, M3…) par l’API ouverte officielle d’Aqara, avec un projet développeur que vous créez sur developer.aqara.com. Éteindre et fermer ne sont jamais bloqués. Serrures, caméras, vannes, portes de garage et chauffage restent en lecture seule. Non officielle, sans lien avec Aqara ; jamais testée avec un vrai appareil."
+        "en": "Reads the devices of your Aqara account (sensors, plugs, lights, curtains behind a hub M2, M3…) through the official Aqara Open API, with a developer project you create on developer.aqara.com. Turning off is never held. Curtain positions, locks, cameras, valves, garage doors and heating stay read only. Unofficial, not affiliated with Aqara; never tested with a real device.",
+        "fr": "Lit les appareils de votre compte Aqara (capteurs, prises, lumières, rideaux derrière un hub M2, M3…) par l’API ouverte officielle d’Aqara, avec un projet développeur que vous créez sur developer.aqara.com. Éteindre n’est jamais bloqué. Positions de rideaux, serrures, caméras, vannes, portes de garage et chauffage restent en lecture seule. Non officielle, sans lien avec Aqara ; jamais testée avec un vrai appareil."
       },
       "links": [
         {
@@ -133,8 +133,8 @@
       "type": "section",
       "label": { "en": "Reads and quota", "fr": "Lectures et quota" },
       "description": {
-        "en": "Each read costs one call per 50 values (plus the device list every 10 minutes). The integration stops reading when the daily budget below is spent (UTC day); turning off and closing are still sent.",
-        "fr": "Chaque lecture coûte un appel par tranche de 50 valeurs (plus la liste des appareils toutes les 10 minutes). L’intégration cesse de lire quand le budget quotidien ci-dessous est épuisé (jour UTC) ; éteindre et fermer sont toujours envoyés."
+        "en": "Each read costs one call per 50 values (plus the device list every 10 minutes). The integration stops reading when the daily budget below is spent (UTC day); turning off is still sent.",
+        "fr": "Chaque lecture coûte un appel par tranche de 50 valeurs (plus la liste des appareils toutes les 10 minutes). L’intégration cesse de lire quand le budget quotidien ci-dessous est épuisé (jour UTC) ; éteindre est toujours envoyé."
       }
     },
     {

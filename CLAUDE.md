@@ -48,9 +48,10 @@ scripts/           cover.png, mutants
   did, feature keys `e<endpoint>-<key>`). Manifest keys are frozen.
 - A verification code is asked on a click of "Send the verification code"
   only: never at start, by a read, a retry or a restart.
-- Turning off and closing are never held by a pause, the daily budget, the
-  device list or `/data`. Devices of the types of `NEVER_COMMANDED` (locks,
-  cameras, valves, garage doors, heating...) are never written.
+- Turning off is never held by a pause, the daily budget, a token renewal,
+  the device list or `/data`. Positions are never written (v1, direction
+  unconfirmed). Devices of the types of `NEVER_COMMANDED` (locks, cameras,
+  valves, garage doors, heating, cooking...) are never written.
 - No key, token, account or code in logs, status, errors or `/data`; the
   forbidden words of test/encoding.test.js stay out of every text.
 - `monotonic` for every decision, `now` only for `/data`, the Time header,

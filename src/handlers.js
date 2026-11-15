@@ -12,7 +12,7 @@ export function registerHandlers(gladys, app, logger) {
   gladys.onDeviceUpdated((device) => app.deviceCreated(device));
   gladys.onDeviceDeleted((device) => app.deviceDeleted(device));
 
-  // Commands: turning off and closing are never held.
+  // Commands: turning off is never held; positions are read only (v1).
   gladys.onSetValue(async (device, feature, value) => {
     const outcome = await app.setValue(device, feature, value);
     logger?.info(`Command to ${feature?.external_id}: ${outcome}`);

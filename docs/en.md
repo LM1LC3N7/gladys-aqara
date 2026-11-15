@@ -48,58 +48,67 @@ logs, the status or `/data`.
 **Discovery** offers each device that has at least one value below, built
 from the "trait" description Aqara gives of its model:
 
-| Aqara trait                                                                        | Gladys                                | Commanded |
-| ---------------------------------------------------------------------------------- | ------------------------------------- | --------- |
-| OnOff of a light                                                                   | light on/off                          | yes       |
-| CurrentLevel of a light (%)                                                        | light brightness 0-100                | yes       |
-| OnOff of an outlet or a switch                                                     | switch on/off                         | yes       |
-| CurrentPositionPercentage / TargetPositionPercentage                               | curtain position (0 closed, 100 open) | yes       |
-| CurrentTemperature (°C), CurrentHumidity (%), CurrentPressure (kPa)                | sensors                               | no        |
-| CurrentIlluminance (lux), CO2Density (ppm), PM2.5Density (µg/m³), VOCDensity (ppb) | sensors                               | no        |
-| BatPercentRemaining (%)                                                            | battery                               | no        |
-| CurrentPower (W), CurrentVoltage (V), CircuitCurrent (A)                           | power, voltage, current               | no        |
-| ContactSensorState                                                                 | opening sensor                        | no        |
-| LeakState, Occupancy, SmokeDetected, CODetected                                    | leak, presence, smoke, CO             | no        |
+| Aqara trait                                                                        | Gladys                                             | Commanded |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------- | --------- |
+| OnOff of a light                                                                   | light on/off                                       | yes       |
+| CurrentLevel of a light (%)                                                        | light brightness 0-100                             | yes       |
+| OnOff of an outlet or a switch                                                     | switch on/off                                      | yes       |
+| CurrentPositionPercentage                                                          | curtain position (read only, direction to confirm) | no        |
+| CurrentTemperature (°C), CurrentHumidity (%), CurrentPressure (kPa)                | sensors                                            | no        |
+| CurrentIlluminance (lux), CO2Density (ppm), PM2.5Density (µg/m³), VOCDensity (ppb) | sensors                                            | no        |
+| BatPercentRemaining (%)                                                            | battery                                            | no        |
+| CurrentPower (W), CurrentVoltage (V), CircuitCurrent (A)                           | power, voltage, current                            | no        |
+| ContactSensorState                                                                 | opening sensor                                     | no        |
+| LeakState, Occupancy, SmokeDetected, CODetected                                    | leak, presence, smoke, CO                          | no        |
 
 A value in another unit than the one listed, out of its range, or a text, is
 unknown: it is never published (never as 0). An offline device (Reachable
 false) publishes nothing. A measurement is published once per source date,
-never when older than 2 hours (a value without a source date is
-published while the device is online); on/off, positions and detectors are published
+never when older than 2 hours (a value without a source date is published
+while the device is online); on/off, positions and detectors are published
 as the current state.
 
-**Read only in this version**: locks, cameras, doorbells, garage doors,
-valves, pumps, window openers, heating and air conditioning: a device of one
-of these types is never written, even its other values (a lock is never
-opened). The energy counter (CumulativeEnergyConsumption), colours and
-colour temperature, buttons and cubes (events only) are not handled yet.
+**Read only in this version**: curtain positions (for every device type),
+locks, cameras, doorbells, garage doors, valves, pumps, window openers,
+heating (including a hearth), air conditioning and cooking appliances: a
+device of one of these types is never written, even its other values (a lock
+is never opened). The energy counter (CumulativeEnergyConsumption), colours
+and colour temperature, buttons and cubes (events only) are not handled yet.
 
-Assumption to check on a real device: a contact sensor "true" means open
-unless Aqara's description of the model names the values (Open / Close).
+**Directions to confirm on a real device** (the Aqara documentation defines
+neither; HomeKit, whose names Aqara uses, and Matter are opposite):
+
+- curtain position: shown as Aqara gives it, assumed 0 = closed, 100 = open
+  (HomeKit); never written until a tester confirms it;
+- contact sensor: "true" is taken as open (HomeKit "contact not detected"),
+  unless Aqara's description of the model names the values (Open / Close).
 
 ## Commands
 
-- **Turning off** (on/off 0, brightness 0) and **closing a curtain**
-  (position 0) are sent at once, during a pause asked by Aqara, beyond the
-  daily budget, before the device list is read again (right after a restart,
-  the device params of Gladys say where to write), and when `/data` cannot be
-  read. A read in progress is cut for it. Refusals of a stop: no
-  configuration yet (kept 2 minutes, sent once it is read), keys or tokens
-  missing, keys or authorization refused by Aqara during this run, a value
+- **Turning off** (on/off 0, brightness 0) is sent at once, during a pause
+  asked by Aqara, beyond the daily budget, while a token renewal is due or in
+  progress (with the current token), before the device list is read again
+  (right after a restart, the device params of Gladys say where to write),
+  and when `/data` cannot be read. A read in progress is cut for it.
+  Refusals of a turn off: no configuration yet (kept 2 minutes, sent once it
+  is read), keys or tokens missing, keys or authorization refused by Aqara
+  during this run, a refresh token Aqara refused (never sent again), a value
   read only, a value not known yet (no read since the start and no device
-  params in Gladys). It is confirmed by the reads 5 s and 20 s later; contradicted
-  (the old value with no newer source date), it is sent again, twice at most;
-  changed after it (a newer source date: the Aqara app, a wall switch, an
-  automation), it is not sent again. A send that could not leave (network,
-  429, 5xx, device offline) is tried again every 10 s, 6 times in 2 minutes.
-- **Turning on, a brightness, a curtain position above 0** are refused
-  during a pause, beyond the budget, when the device list is older than 15
-  minutes, when the device is offline or the value read only. Sent, they are
+  params in Gladys). It is confirmed by the reads 5 s and 20 s later;
+  contradicted (the old value with an older source date), it is sent again,
+  twice at most; changed after it (a newer source date: the Aqara app, a wall
+  switch, an automation) it is not sent again; without a source date, or when
+  no read could show it, it is not sent again and the status says "Not
+  confirmed". A send that could not leave (network, 429, 5xx, device offline,
+  a token refused right after its renewal) is tried again every 10 s, 6 times
+  in 2 minutes. Only a turn off is kept across a restart (2 minutes at most).
+- **Turning on, a brightness** are refused during a pause, beyond the
+  budget, when the device list is older than 15 minutes (or two read
+  intervals when longer), when the device is offline or the value read only.
+  They are checked again right before they leave; one not gone by the 3 s
+  answer ("nothing sent") is cut and never leaves later. Sent, they are
   confirmed the same way (reads 5 s and 20 s later). A command queued before
   a turn off of the same endpoint never leaves after it.
-
-Aqara has no "stop" for a curtain in its trait model: only the position is
-offered.
 
 ## Reads and quota
 
@@ -107,20 +116,24 @@ Every read costs one call per 50 values, plus the device list every 10
 minutes and the descriptions of the new models. Default every 120 s (60 s at
 least). The **daily budget** (3000 calls by default, UTC day) is counted
 before each call and kept across restarts: once spent, reads stop until the
-next day; turning off and closing still go. Set it below the quota of your
+next day; turning off still goes. Set it below the quota of your
 project. A 429, or a busy server during a read (codes 100, 104, 5xx), pauses
 everything but the stops (a 5xx answering one command pauses nothing), 1 minute doubled up to 6 hours (or the Retry-After when
 longer), kept across restarts. One read request at a time.
 
-Refusals: the keys refused (codes 106, 107, 2002…) stop everything until
-you change them or click **Test the connection** (which always tries); a
-permission refused on one route (2008, 403…) is never taken for a refusal of
-the keys.
+Refusals: the keys refused (codes 106 invalid sign, 107 illegal App Key,
+2002 App ID or App Key illegal) stop everything until you change them or
+click **Test the connection** (which always tries them); a permission
+refused on one route (403, 2008, 2012, 2013, 2014, 2022…) is never taken for
+a refusal of the keys. A refused renewal (2006, 2007) ends the authorization:
+authorize again. An access token refused right after Aqara renewed it is not
+read, spaced (doubled up to an hour), never the end of the authorization.
 
 ## Troubleshooting
 
 - "refused the keys of the project": check App ID, Key ID, App Key and the
-  server; a project not approved yet is refused too.
+  server; a project not approved yet is refused too. Code 106 (signature):
+  check the App Key, and the Key ID exactly as the console shows it.
 - "Aqara refused the date of the request": the clock of the Gladys host is
   wrong.
 - "a permission refused (an IP restriction of the project?)": the IP

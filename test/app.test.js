@@ -114,7 +114,7 @@ test('a stop contradicted by the reads is sent again, twice at most', async (t) 
   await answer(ctx, command(ctx, PLUG, 0));
   await until(ctx.clock, () => app.stops.size === 0, 'stop ended', { step: 100, max: 120_000 });
   assert.equal(srv.count('spec.write.trait'), 3);
-  assert.match(status(ctx.gladys), /Not confirmed by Aqara: turning off or closing Kettle plug/);
+  assert.match(status(ctx.gladys), /Not confirmed by Aqara: turning off Kettle plug/);
 });
 
 test('a stop is not sent again over a change made after it (source date newer)', async (t) => {
@@ -138,12 +138,11 @@ test('the lock switch and the lock are never written', async (t) => {
   assert.equal(ctx.srv.count('spec.write.trait'), 0);
 });
 
-test('turn on, brightness, curtain position; brightness 0 is a turn off', async (t) => {
+test('turn on, brightness; brightness 0 is a turn off', async (t) => {
   const ctx = await setup(t);
   const { srv } = ctx;
   assert.match(await answer(ctx, command(ctx, LIGHT, 1)), /^Sent/);
   assert.match(await answer(ctx, command(ctx, LEVEL, 70)), /^Sent/);
-  assert.match(await answer(ctx, command(ctx, CURTAIN, 30)), /^Sent/);
   assert.match(await answer(ctx, command(ctx, LEVEL, 0)), /^Sent/);
   const traits = srv.of('spec.write.trait').map((r) => r.data.traits[0]);
   assert.deepEqual(
@@ -151,39 +150,59 @@ test('turn on, brightness, curtain position; brightness 0 is a turn off', async 
     [
       ['OnOff', true],
       ['CurrentLevel', 70],
-      ['TargetPositionPercentage', 30],
       ['OnOff', false],
     ],
   );
   await assert.rejects(answer(ctx, command(ctx, LEVEL, 101)), /Invalid value/);
-  await assert.rejects(answer(ctx, command(ctx, CURTAIN, 12.5)), /Invalid value/);
-  await assert.rejects(answer(ctx, command(ctx, TEMP, 1)), /unknown|Invalid/);
+  await assert.rejects(answer(ctx, command(ctx, TEMP, 1)), /unknown|Invalid|read only/);
 });
 
-test('closing a curtain leaves right after a restart, before any read, from the device params', async (t) => {
-  const ctx = await setup(t, { firstRead: false, config: { app_key: '' } });
-  // No keys yet: kept until the configuration is usable.
-  const { app, srv } = ctx;
+test('positions are read only in v1: never written, open or close, even in a pause or without a read', async (t) => {
+  const ctx = await setup(t);
+  const { app, srv, gladys } = ctx;
+  const curtain = gladys.fake.discoveredDevices.find((d) => d.external_id === F('lumi.curt0001'));
+  assert.deepEqual(
+    curtain.features.map((f) => [f.type, f.read_only]),
+    [['position', true]],
+  );
+  assert.ok(!curtain.params.some((p) => p.name.startsWith('aqara_write_')));
+  for (const v of [0, 30, 100])
+    await assert.rejects(answer(ctx, command(ctx, CURTAIN, v)), /read only/);
   app.pauseUntil = app.monotonic() + 3_600_000;
-  const outcome = await answer(ctx, command(ctx, CURTAIN, 0));
-  assert.match(outcome, /keys of the project are missing/);
+  await assert.rejects(answer(ctx, command(ctx, CURTAIN, 0)), /read only/);
+  app.devices.clear();
+  app.descriptions.clear();
+  await assert.rejects(answer(ctx, command(ctx, CURTAIN, 0)), /unknown/);
   assert.equal(srv.count('spec.write.trait'), 0);
 });
 
-test('closing a curtain with an empty memory of devices: the params of the created device say where', async (t) => {
-  const ctx = await setup(t, { firstRead: false });
-  const { app, srv } = ctx;
-  app.devices.clear();
-  app.descriptions.clear();
-  app.pauseUntil = app.monotonic() + 3_600_000;
-  const before = srv.count('spec.write.trait');
-  const outcome = await answer(ctx, command(ctx, CURTAIN, 0));
-  assert.match(outcome, /^Sent/);
-  const w = srv.of('spec.write.trait').slice(before)[0].data.traits[0];
-  assert.deepEqual(
-    [w.functionCode, w.traitCode, w.value],
-    ['WindowCovering', 'TargetPositionPercentage', 0],
-  );
+test('a window opener or an untyped device with a position: read only all the same', async (t) => {
+  const ctx = await setup(t, { connect: false, firstRead: false });
+  const { srv, gladys, app, clock } = ctx;
+  const m = srv.data.models['lumi.curtain.acn003'];
+  delete m.types;
+  delete m.endpoints[1].endpointTypes;
+  await gladys.connect();
+  await until(clock, () => app.lastResult?.ok, 'read');
+  const curtain = gladys.fake.discoveredDevices.find((d) => d.external_id === F('lumi.curt0001'));
+  assert.equal(curtain.features[0].read_only, true);
+  await assert.rejects(answer(ctx, command(ctx, CURTAIN, 100)), /read only/);
+  assert.equal(srv.count('spec.write.trait'), 0);
+});
+
+test('a close kept in /data from an older version is never replayed after a restart', async (t) => {
+  const clock = (await import('./helpers/clock.js')).testClock({
+    start: Date.UTC(2026, 10, 15, 10),
+  });
+  const data = {
+    salt: '0'.repeat(32),
+    stops: [
+      { did: 'lumi.curt0001', key: 'e1-position', at: clock.now() - 30_000, sent: 1, attempts: 1 },
+    ],
+  };
+  const ctx = await setup(t, { clock, data });
+  await clock.advance(30_000);
+  assert.equal(ctx.srv.count('spec.write.trait'), 0);
 });
 
 test('expired access token: renewed once, the request tried again, the new tokens saved in Gladys', async (t) => {

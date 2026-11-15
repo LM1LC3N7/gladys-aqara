@@ -166,7 +166,7 @@ test('trait model: both spellings of the API, unit checked, locks never commanda
     ['e1-power', false],
     ['e1-voltage', false],
   ]);
-  assert.deepEqual(keys('lumi.curtain.acn003'), [['e1-position', true]]);
+  assert.deepEqual(keys('lumi.curtain.acn003'), [['e1-position', false]]);
   assert.deepEqual(keys('aqara.lock.wbzac1'), [
     ['e0-battery', false],
     ['e2-onoff', false],
@@ -263,12 +263,17 @@ test('the device params tell where a stop is written (no read needed)', () => {
     { did: 'lumi.curt0001', model: 'lumi.curtain.acn003', name: 'Curtain' },
     featuresOf(models.get('lumi.curtain.acn003')),
   );
-  const f = featureFromParams(device, 'e1-position');
-  assert.deepEqual(f.write, {
-    functionCode: 'WindowCovering',
-    traitCode: 'TargetPositionPercentage',
-  });
+  // Positions are read only in v1: no param, nothing written even right after a restart.
+  assert.equal(featureFromParams(device, 'e1-position'), undefined);
+  assert.ok(!device.params.some((p) => p.name.startsWith('aqara_write_')));
   assert.equal(featureFromParams(device, 'e1-onoff'), undefined);
+  const plug = buildDevice(
+    g,
+    { did: 'lumi.plug0001', model: 'lumi.plug.maeu01', name: 'Plug' },
+    featuresOf(models.get('lumi.plug.maeu01')),
+  );
+  const onoff = featureFromParams(plug, 'e1-onoff');
+  assert.deepEqual([onoff.functionCode, onoff.traitCode], ['Output', 'OnOff']);
   assert.equal(
     featureFromParams({ params: [{ name: 'aqara_write_e1-onoff', value: 'a/b/c' }] }, 'e1-onoff'),
     undefined,
@@ -328,8 +333,10 @@ test('/data: only known keys, future dates dropped, a mark of 6 bits, nothing se
 test('the request is cut past its size limit and bounded in time', async (t) => {
   const server = http.createServer((req, res) => {
     if (req.url === '/big') {
-      res.writeHead(200);
-      res.end(Buffer.alloc(300 * 1024, 'a'));
+      // Chunked, no Content-Length: cut while reading.
+      res.writeHead(200, { 'Transfer-Encoding': 'chunked' });
+      res.write(Buffer.alloc(64 * 1024, 'a'));
+      res.write(Buffer.alloc(64 * 1024, 'a'), () => res.end(Buffer.alloc(64 * 1024, 'a')));
     } else if (req.url === '/len') {
       res.writeHead(200, { 'Content-Length': String(10 * 1024 * 1024) });
       res.write('x');

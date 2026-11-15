@@ -47,7 +47,7 @@ export const TOKEN_VALIDITY = '7d';
 export const CODES = {
   OK: 0,
   /** The project keys (Appid, Keyid, Appkey) are refused. */
-  KEYS: new Set([106, 107, 2002, 2012, 2013, 2022]),
+  KEYS: new Set([106, 107, 2002]),
   /** The access token expired: renewed with the refresh token, then the request once again. */
   EXPIRED: new Set([108, 2005]),
   /** The access token is absent or wrong: renewed once; a refused renewal ends the authorization. */
@@ -69,7 +69,7 @@ export const CODES = {
   /** One device (offline, not supported, permission): never about the account. */
   DEVICE: new Set([601, 602, 603, 604, 606, 612, 638, 664, 717, 747, 1003, 1004, 1007, 1008]),
   /** A permission refused on one route: never a refusal of the credentials. */
-  PERMISSION: new Set([403, 706, 755, 756, 803, 2008, 2010, 2014]),
+  PERMISSION: new Set([403, 706, 755, 756, 803, 2008, 2010, 2012, 2013, 2014, 2022]),
 };
 
 /**
@@ -83,12 +83,18 @@ export const NEVER_COMMANDED = new Set([
   'AirConditionerController',
   'BathroomHeater',
   'Camera',
+  'CookSurface',
+  'Cooktop',
+  'ElectricCooker',
   'DoorLock',
   'ElectricVehicleSupplyEquipment',
   'FloorHeating',
   'GarageDoor',
   'GeneralValve',
+  'Hearth',
   'HeatPump',
+  'MicrowaveOven',
+  'Oven',
   'Pump',
   'Pusher',
   'Thermostat',

@@ -13,7 +13,6 @@ import { HttpError } from '../src/http.js';
 const PLUG = F('lumi.plug0001', 'e1-onoff');
 const LIGHT = F('lumi.light0001', 'e1-onoff');
 const LEVEL = F('lumi.light0001', 'e1-brightness');
-const CURTAIN = F('lumi.curt0001', 'e1-position');
 const TEMP = F('lumi.weat0001', 'e1-temperature');
 
 test('a stop cuts a stuck read and leaves at once', async (t) => {
@@ -48,7 +47,7 @@ test('a stop that cannot leave: tried again in its budget, then every 10 s, kept
   await clock.advance(10_100);
   assert.equal(app.stops.get('lumi.plug0001|e1-onoff').attempts, 3);
   await until(clock, () => app.stops.size === 0, 'given up', { step: 500, max: 130_000 });
-  assert.match(status(ctx.gladys), /Not confirmed by Aqara: turning off or closing Kettle plug/);
+  assert.match(status(ctx.gladys), /Not confirmed by Aqara: turning off Kettle plug/);
   assert.equal(store.data.stops.length, 0);
   down = false;
 });
@@ -90,7 +89,7 @@ test('a turn on queued behind a stop of the same endpoint never leaves after it'
   ctx.app.pauseUntil = ctx.app.monotonic() + 3_600_000;
   const results = await Promise.allSettled([answer(ctx, on1), answer(ctx, on2), answer(ctx, off)]);
   assert.equal(results[2].status, 'fulfilled');
-  assert.match(String(results[1].reason?.message), /turn off or a close came after it/);
+  assert.match(String(results[1].reason?.message), /turn off came after it/);
   const values = srv.of('spec.write.trait').map((r) => r.data.traits[0].value);
   assert.equal(values.at(-1), false, JSON.stringify(values));
 });
@@ -125,12 +124,8 @@ test('starts are serialized per endpoint, never across devices', async (t) => {
       }, 40),
     );
   };
-  await Promise.all([
-    answer(ctx, command(ctx, LIGHT, 1)),
-    answer(ctx, command(ctx, PLUG, 1)),
-    answer(ctx, command(ctx, CURTAIN, 40)),
-  ]);
-  assert.equal(peak, 3);
+  await Promise.all([answer(ctx, command(ctx, LIGHT, 1)), answer(ctx, command(ctx, PLUG, 1))]);
+  assert.equal(peak, 2);
 });
 
 test('a start needs a device list younger than 15 minutes and an online device', async (t) => {
@@ -348,7 +343,7 @@ test('the devices published carry no supported_options; features in Gladys units
 test('a scene on 5 slow targets sets all 5; one target in 5xx stops none of the others', async (t) => {
   const ctx = await setup(t, { connect: false, firstRead: false });
   const { srv, gladys, app, clock } = ctx;
-  for (const n of ['0002', '0003', '0004']) {
+  for (const n of ['0002', '0003', '0004', '0005']) {
     srv.data.devices.push({
       did: `lumi.plug${n}`,
       model: 'lumi.plug.maeu01',
@@ -372,9 +367,9 @@ test('a scene on 5 slow targets sets all 5; one target in 5xx stops none of the 
     F('lumi.plug0002', 'e1-onoff'),
     F('lumi.plug0003', 'e1-onoff'),
     F('lumi.light0001', 'e1-onoff'),
-    F('lumi.curt0001', 'e1-position'),
+    F('lumi.plug0005', 'e1-onoff'),
   ];
-  const values = [0, 1, 1, 1, 40];
+  const values = [0, 1, 1, 1, 1];
   const failing = command(ctx, F('lumi.plug0004', 'e1-onoff'), 1);
   const results = await Promise.allSettled([
     answer(ctx, failing),
@@ -387,7 +382,7 @@ test('a scene on 5 slow targets sets all 5; one target in 5xx stops none of the 
     'lumi.plug0002',
     'lumi.plug0003',
     'lumi.light0001',
-    'lumi.curt0001',
+    'lumi.plug0005',
   ])
     assert.ok(written.has(did), did);
   // The 5xx paused nothing: the next command still leaves.
