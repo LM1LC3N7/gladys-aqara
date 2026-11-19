@@ -1,6 +1,6 @@
 {
   "name": "gladys-aqara",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for Aqara hubs and their devices through the official Aqara Open API (cloud, your own developer project): sensors, plugs, lights, curtains. Unofficial, not affiliated with Aqara.",
   "type": "module",
