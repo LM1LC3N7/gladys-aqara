@@ -108,7 +108,11 @@ neither; HomeKit, whose names Aqara uses, and Matter are opposite):
   They are checked again right before they leave; one not gone by the 3 s
   answer ("nothing sent") is cut and never leaves later. Sent, they are
   confirmed the same way (reads 5 s and 20 s later). A command queued before
-  a turn off of the same endpoint never leaves after it.
+  a turn off of the same endpoint never leaves after it: a turn off cuts
+  every turn on of its endpoint not gone yet (a connection in progress
+  included, checked again at its first byte); one already gone that reaches
+  Aqara after the turn off never counts as a newer change: the turn off is
+  sent again.
 
 ## Reads and quota
 
@@ -127,7 +131,9 @@ click **Test the connection** (which always tries them); a permission
 refused on one route (403, 2008, 2012, 2013, 2014, 2022…) is never taken for
 a refusal of the keys. A refused renewal (2006, 2007) ends the authorization:
 authorize again. An access token refused right after Aqara renewed it is not
-read, spaced (doubled up to an hour), never the end of the authorization.
+read, spaced (doubled up to an hour), never the end of the authorization;
+while it is spaced, no renewal is asked (a turn off is sent with the
+current token and tried again later).
 
 ## Troubleshooting
 

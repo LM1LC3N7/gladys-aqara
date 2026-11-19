@@ -39,6 +39,7 @@ export function request(
     maxBytes = LIMITS.answerBytes,
     signal,
     onSent,
+    beforeSend,
     timers = globalThis,
   },
 ) {
@@ -84,12 +85,27 @@ export function request(
       fail('network', err.code ?? 'invalid request');
       return;
     }
+    // With `beforeSend`, nothing is written before the connection is up (TLS verified for
+    // HTTPS); `beforeSend()` then decides, right before the first byte (false: nothing sent).
+    let ended = !beforeSend;
+    const go = () => {
+      if (ended || done) return;
+      ended = true;
+      if (!beforeSend()) {
+        fail('aborted');
+        return;
+      }
+      req.end(body);
+    };
     req.on('socket', (socket) => {
       const event = target.protocol === 'https:' ? 'secureConnect' : 'connect';
-      if (!socket.connecting && (event === 'connect' || socket.authorized)) connected = true;
-      else
+      if (!socket.connecting && (event === 'connect' || socket.authorized)) {
+        connected = true;
+        go();
+      } else
         socket.once(event, () => {
           connected = true;
+          go();
           check();
         });
     });
@@ -130,6 +146,6 @@ export function request(
         });
       });
     });
-    req.end(body);
+    if (!beforeSend) req.end(body);
   });
 }

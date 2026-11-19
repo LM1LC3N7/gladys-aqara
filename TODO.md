@@ -63,7 +63,13 @@ up to date at the end of every milestone.
   3 s deadline), also after a renewal; cut by an AbortSignal at the deadline
   when not gone ("nothing sent" never leaves later). Device list age limit:
   max(15 min, 2 read intervals).
-- Nothing leaves after `stop()` (checked before every request).
+- Nothing leaves after `stop()` (checked before every request, and again
+  at the connection, before the first byte: `beforeSend` of src/http.js).
+- A turn off cuts the starts of its endpoint not gone yet (AbortSignal); a
+  start already gone at the click marks the stop `raced`: its newer source
+  date never ends the stop (review r2, N1).
+- During the spacing after a fresh token refused, no renewal at all; a stop
+  is sent with the current token (review r2, M9).
 - Curtain: no stop trait in the trait model, so no `curtain/state`.
 - Tokens: in the Gladys configuration only (`setConfig`); `/data` keeps the
   expiry and a 6-bit salted mark of the refresh token. Renewed a day before

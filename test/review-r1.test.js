@@ -649,3 +649,176 @@ test('/data: an older write that hung is never put back over a newer one', async
   await first;
   assert.equal(files.get('/x/state.json'), JSON.stringify({ v: 2 }));
 });
+
+// --- Review r2 -------------------------------------------------------------------------------
+
+test('N1: a turn on still connecting when a turn off is clicked is cut; the light ends off', async (t) => {
+  const clock = testClock({ start: Date.UTC(2026, 10, 15, 10) });
+  const { request: httpRequest, HttpError: E } = await import('../src/http.js');
+  const slowConnect = (url, opts) =>
+    opts.body?.includes('"value":true')
+      ? new Promise((resolve, reject) => {
+          clock.timers.setTimeout(() => {
+            if (opts.signal?.aborted) reject(new E('aborted', false));
+            else httpRequest(url, opts).then(resolve, reject);
+          }, 2_000);
+        })
+      : httpRequest(url, opts);
+  const ctx = await setup(t, { clock, app: { request: slowConnect } });
+  const { srv } = ctx;
+  const on = command(ctx, LIGHT, 1);
+  on.catch(() => {});
+  await clock.advance(300);
+  assert.match(await answer(ctx, command(ctx, LIGHT, 0)), /^Sent/);
+  const result = await Promise.allSettled([answer(ctx, on)]);
+  assert.match(String(result[0].reason?.message), /turn off came after it/);
+  await clock.advance(25_000);
+  assert.deepEqual(
+    writes(srv).map((w) => w.value),
+    [false],
+  );
+  assert.equal(srv.data.values['lumi.light0001|1|OnOff'].value, false);
+});
+
+test('N1: a turn on already gone when a turn off is clicked, arriving after it: the stop is sent again', async (t) => {
+  const ctx = await setup(t);
+  const { app, srv, clock } = ctx;
+  const late = deferred();
+  srv.routes['spec.write.trait'] = (r, s) =>
+    r.data.traits[0].value === true
+      ? late.promise.then(() => s.defaults['spec.write.trait'](r, s))
+      : s.defaults['spec.write.trait'](r, s);
+  const on = command(ctx, LIGHT, 1);
+  on.catch(() => {});
+  await until(clock, () => srv.hanging === 1, 'turn on gone', { step: 1 });
+  assert.match(await answer(ctx, command(ctx, LIGHT, 0)), /^Sent/);
+  await clock.advance(1_500); // past the second of the Date header of the turn off
+  late.release(); // Aqara applies the turn on after the turn off (a newer source date)
+  await until(clock, () => app.stops.size === 0, 'stop ended', { step: 100, max: 60_000 });
+  assert.deepEqual(
+    writes(srv).map((w) => w.value),
+    [true, false, false],
+  );
+  assert.equal(srv.data.values['lumi.light0001|1|OnOff'].value, false);
+});
+
+test('N1: beforeSend decides at the connection, before any byte', async (t) => {
+  const net = await import('node:net');
+  let bytes = 0;
+  const server = net.createServer((socket) => socket.on('data', (d) => (bytes += d.length)));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { request: httpRequest } = await import('../src/http.js');
+  let asked = 0;
+  await assert.rejects(
+    httpRequest(`http://127.0.0.1:${server.address().port}/x`, {
+      method: 'POST',
+      body: '{"a":1}',
+      timeoutMs: 2_000,
+      beforeSend: () => {
+        asked += 1;
+        return false;
+      },
+    }),
+    { kind: 'aborted', sent: false },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(asked, 1);
+  assert.equal(bytes, 0);
+});
+
+test('M9: while a fresh token is refused, stops get no renewal each; spaced renewals', async (t) => {
+  const ctx = await setup(t, { connect: false, firstRead: false });
+  const { app, srv, gladys, clock } = ctx;
+  srv.tokens = { access: 'ACCESS-other-0009', refresh: srv.tokens.refresh };
+  const refuse = () => aqara(2004, 'AccessToken incorrect');
+  srv.routes['query.device.info'] = refuse;
+  srv.routes['spec.write.trait'] = refuse;
+  await gladys.connect();
+  await until(clock, () => app.lastResult !== undefined, 'read');
+  assert.equal(srv.count('config.auth.refreshToken'), 1);
+  await answer(ctx, command(ctx, PLUG, 0));
+  await answer(ctx, command(ctx, LIGHT, 0));
+  await clock.advance(70_000);
+  assert.equal(srv.count('config.auth.refreshToken'), 1);
+  assert.ok(srv.count('spec.write.trait') >= 2, 'the stops are still tried');
+});
+
+/** A request whose connection takes `ms` (virtual): `log` records when its signal aborts. */
+function slowStarts(clock, ms, log, { keepBeforeSend = true } = {}) {
+  return async (url, opts) => {
+    const { request: httpRequest, HttpError: E } = await import('../src/http.js');
+    if (!opts.body?.includes('"value":true')) return httpRequest(url, opts);
+    return new Promise((resolve, reject) => {
+      opts.signal?.addEventListener('abort', () => {
+        log.abortedAt = clock.monotonic();
+        reject(new E('aborted', false));
+      });
+      clock.timers.setTimeout(() => {
+        if (opts.signal?.aborted) return;
+        const { beforeSend, signal, ...rest } = opts;
+        httpRequest(url, keepBeforeSend ? { ...rest, beforeSend } : rest).then(resolve, reject);
+        void signal;
+      }, ms);
+    });
+  };
+}
+
+test('N1: the turn off aborts the request of a start still connecting, at the click', async (t) => {
+  const clock = testClock({ start: Date.UTC(2026, 10, 15, 10) });
+  const log = {};
+  const ctx = await setup(t, { clock, app: { request: slowStarts(clock, 2_000, log) } });
+  const on = command(ctx, LIGHT, 1);
+  on.catch(() => {});
+  await clock.advance(300);
+  const click = clock.monotonic();
+  await answer(ctx, command(ctx, LIGHT, 0));
+  assert.ok(log.abortedAt !== undefined && log.abortedAt - click < 100, 'aborted at the click');
+});
+
+test('I2: the request of a start not gone is aborted at its 3 s deadline', async (t) => {
+  const clock = testClock({ start: Date.UTC(2026, 10, 15, 10) });
+  const log = {};
+  const ctx = await setup(t, { clock, app: { request: slowStarts(clock, 10_000, log) } });
+  const click = clock.monotonic();
+  await assert.rejects(answer(ctx, command(ctx, LIGHT, 1)), /Nothing sent/);
+  assert.ok(
+    log.abortedAt !== undefined && log.abortedAt - click < 3_200,
+    'aborted at the deadline',
+  );
+});
+
+test('N1: stop() while a start is connecting: checked at the first byte, nothing written', async (t) => {
+  const clock = testClock({ start: Date.UTC(2026, 10, 15, 10) });
+  const log = {};
+  const ctx = await setup(t, { clock, app: { request: slowStarts(clock, 1_000, log) } });
+  const on = command(ctx, LIGHT, 1);
+  on.catch(() => {});
+  await clock.advance(100);
+  await ctx.app.stop();
+  await clock.advance(2_000);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(ctx.srv.count('spec.write.trait'), 0);
+});
+
+test('a call refused before it leaves (stop(), a newer turn off) is never counted in the budget', async (t) => {
+  const ctx = await setup(t);
+  const { app, srv, clock } = ctx;
+  // A turn on waiting for a renewal, then superseded: the budget counts only what reached Aqara.
+  expiresSoon(app, clock);
+  const slow = deferred();
+  srv.routes['config.auth.refreshToken'] = (r, s) =>
+    slow.promise.then(() => s.defaults['config.auth.refreshToken'](r, s));
+  const on = command(ctx, LIGHT, 1);
+  on.catch(() => {});
+  await clock.advance(300);
+  await answer(ctx, command(ctx, LIGHT, 0));
+  slow.release();
+  await Promise.allSettled([answer(ctx, on)]);
+  await until(clock, () => !app.refreshing, 'renewal');
+  assert.equal(app.memory.budget.calls, srv.requests.length);
+  await app.stop();
+  const calls = app.memory.budget.calls;
+  await assert.rejects(app.call('spec.query.trait', { traits: [] }), { kind: 'aborted' });
+  assert.equal(app.memory.budget.calls, calls);
+});

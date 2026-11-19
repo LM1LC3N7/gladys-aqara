@@ -295,12 +295,9 @@ export const MUTANTS = [
     'if (!protective) await this.renewSoon(false);',
     'await this.renewSoon(protective);',
   ],
-  [
-    'I2 no check right before the bytes',
-    A,
-    '      if (guard) {\n        const why = guard();\n        if (why) throw new ApiError(why, { sent: false });\n      }',
-    '',
-  ],
+  // "I2 no check right before the bytes" (the guard of call()) is equivalent since review r2:
+  // a newer stop and the deadline both abort the signal, checked on the next line, and the
+  // guard is asked again at the first byte ("N1 no check at the first byte").
   ['I2 a late start not cut', A, '        if (!left) abort.abort();', ''],
   [
     'I3 2013 refuses the keys',
@@ -311,8 +308,8 @@ export const MUTANTS = [
   [
     'I4 a fresh token refused ends the grant',
     A,
-    "          throw new ApiError('fresh-token', { sent: true, code: err.code });",
-    "          this.grantRefusedNow();\n          throw new ApiError('grant', { sent: true, code: err.code });",
+    "TIMINGS.secondaryMax,\n            );\n          throw new ApiError('fresh-token', { sent: true, code: err.code });",
+    "TIMINGS.secondaryMax,\n            );\n          this.grantRefusedNow();\n          throw new ApiError('grant', { sent: true, code: err.code });",
   ],
   [
     'I4 no spacing after a fresh token refused',
@@ -356,6 +353,38 @@ export const MUTANTS = [
     A,
     '          if (this.stops.get(key) === stop) this.stopUnconfirmed(stop);',
     '          if (this.stops.get(key) === stop) this.endStop(key);',
+  ],
+  // Review r2 (the reviewer's distinct ones, then the corrections N1, M9).
+  [
+    'R2 refused refresh token sent again after a restart',
+    A,
+    "    if (this.grantRefused() || this.grantRefusedProven())\n      throw new ApiError('grant', { sent: false });",
+    "    if (this.grantRefusedProven())\n      throw new ApiError('grant', { sent: false });",
+  ],
+  ['N1 a stop does not cut a start still connecting', A, '      else start.abort.abort();', ''],
+  [
+    'N1 a raced start taken for a newer change',
+    A,
+    'if (!stop.raced && time !== undefined',
+    'if (time !== undefined',
+  ],
+  [
+    'N1 beforeSend not asked at the connection',
+    'src/http.js',
+    '      if (!beforeSend()) {',
+    '      if (false) {',
+  ],
+  [
+    'N1 no check at the first byte',
+    A,
+    '!this.stopped && gen === this.generation && !(guard && guard()) && !signal?.aborted',
+    'true',
+  ],
+  [
+    'M9 a renewal for every stop during the spacing',
+    A,
+    'if (tokenRefused && this.tokenWait.until > this.monotonic()) {',
+    'if (false) {',
   ],
 ];
 

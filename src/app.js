@@ -161,6 +161,8 @@ export class AqaraApp {
     this.followTimer = undefined;
     this.readLane = Promise.resolve();
     this.commandLanes = new Map();
+    /** lane -> starts not answered yet `{ abort, left() }` (a stop cuts the ones not gone). */
+    this.startsInFlight = new Map();
     this.readAbort = undefined;
     this.sleeps = new Map();
     this.pollTimer = undefined;
@@ -537,16 +539,33 @@ export class AqaraApp {
           timeoutMs,
           signal,
           onSent,
+          // Checked again at the connection, right before the first byte.
+          beforeSend: () =>
+            !this.stopped && gen === this.generation && !(guard && guard()) && !signal?.aborted,
         });
       } catch (err) {
         if (err.kind === 'keys') this.keysRefusedNow();
-        if ((err.kind === 'expired' || err.kind === 'token') && attempt === 0) {
+        const tokenRefused = err.kind === 'expired' || err.kind === 'token';
+        // After a fresh token was refused, no renewal while the spacing runs (a stop is sent
+        // with the current token; refused, it is "not sent" and tried again later).
+        if (tokenRefused && this.tokenWait.until > this.monotonic()) {
+          throw new ApiError('fresh-token', { sent: true, code: err.code });
+        }
+        if (tokenRefused && attempt === 0) {
           await this.refreshTokens({ protective });
           continue;
         }
-        if (err.kind === 'expired' || err.kind === 'token') {
+        if (tokenRefused) {
           // Refused just after an accepted renewal: no proof the authorization is over
-          // (the refresh token was just accepted). Not read, spaced; nothing is held by it.
+          // (the refresh token was just accepted). Not read, spaced (renewals too, doubled up
+          // to an hour); nothing is held by it.
+          this.tokenWait.failures += 1;
+          this.tokenWait.until =
+            this.monotonic() +
+            Math.min(
+              (this.config?.pollMs ?? 60_000) * 2 ** this.tokenWait.failures,
+              TIMINGS.secondaryMax,
+            );
           throw new ApiError('fresh-token', { sent: true, code: err.code });
         }
         throw err;
@@ -1075,13 +1094,6 @@ export class AqaraApp {
   readFailed(err) {
     this.logger?.warn(`Aqara read failed (${this.redact(err.message)})`);
     if (err.kind === 'rate' || err.kind === 'server') this.pause(err);
-    if (err.kind === 'fresh-token') {
-      // A token refused right after its renewal: not read, spaced (doubled up to an hour).
-      this.tokenWait.failures += 1;
-      this.tokenWait.until =
-        this.monotonic() +
-        Math.min(this.config.pollMs * 2 ** this.tokenWait.failures, TIMINGS.secondaryMax);
-    }
     this.lastResult = {
       ok: false,
       kind: err.kind === 'too-large' ? 'bad' : err.kind,
@@ -1214,6 +1226,13 @@ export class AqaraApp {
     const lane = `${did}|e${feature.endpoint}`;
     this.stopGen.set(lane, (this.stopGen.get(lane) ?? 0) + 1);
     this.commandAt.set(lane, this.monotonic());
+    // Every start of this endpoint not gone yet is cut (a connection in progress included);
+    // one already gone may reach Aqara after this stop: its value is never taken for a newer change.
+    let raced = false;
+    for (const start of this.startsInFlight.get(lane) ?? []) {
+      if (start.left()) raced = true;
+      else start.abort.abort();
+    }
     const old = this.stops.get(key);
     if (old?.timer) this.timers.clearTimeout(old.timer);
     if (old) old.ended = true;
@@ -1226,6 +1245,7 @@ export class AqaraApp {
       sent: 0,
       attempts: 0,
       resends: 0,
+      raced,
       timer: undefined,
       inflight: undefined,
     };
@@ -1462,7 +1482,7 @@ export class AqaraApp {
       return;
     }
     if (value === undefined) return;
-    if (time !== undefined && stop.serverAt !== undefined && time > stop.serverAt) {
+    if (!stop.raced && time !== undefined && stop.serverAt !== undefined && time > stop.serverAt) {
       this.endStop(key);
       return;
     }
@@ -1530,6 +1550,9 @@ export class AqaraApp {
       if (settled || this.monotonic() >= deadline) return 'late';
       return undefined;
     };
+    const entry = { abort, left: () => left };
+    if (!this.startsInFlight.has(lane)) this.startsInFlight.set(lane, new Set());
+    this.startsInFlight.get(lane).add(entry);
     const work = this.inCommandLane(lane, async () => {
       if ((this.stopGen.get(lane) ?? 0) !== gen) return { refused: T.supersededByStop };
       if (this.monotonic() >= deadline || settled) return { refused: T.notSentCommand('timeout') };
@@ -1589,6 +1612,12 @@ export class AqaraApp {
       this.followUp(did, feature, false);
       return { ok: true };
     });
+    work
+      .finally(() => {
+        this.startsInFlight.get(lane)?.delete(entry);
+        if (this.startsInFlight.get(lane)?.size === 0) this.startsInFlight.delete(lane);
+      })
+      .catch(() => {});
     const result = await bounded(
       work,
       Math.max(0, deadline - this.monotonic()),
@@ -1607,7 +1636,8 @@ export class AqaraApp {
     if (result.ok) return T.sent.en;
     if (result.refused) throw refusal(result.refused);
     const err = result.error;
-    if (err.kind === 'superseded') throw refusal(T.supersededByStop);
+    if (err.kind === 'superseded' || (!left && (this.stopGen.get(lane) ?? 0) !== gen))
+      throw refusal(T.supersededByStop);
     if (err.kind === 'late') throw refusal(T.notSentCommand('timeout'));
     // A 429 is about the account: pause. A 5xx of one command never pauses the others.
     if (err.kind === 'rate') this.pause(err);

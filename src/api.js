@@ -104,7 +104,7 @@ export class AqaraApi {
    * `options`: `accessToken` (none for the authorization intents),
    * `timeoutMs`, `signal`, `onSent` (called once the request left).
    */
-  async call(intent, data, { accessToken, timeoutMs, signal, onSent } = {}) {
+  async call(intent, data, { accessToken, timeoutMs, signal, onSent, beforeSend } = {}) {
     const body = JSON.stringify({ intent, data });
     let res;
     try {
@@ -115,6 +115,7 @@ export class AqaraApi {
         timeoutMs,
         signal,
         onSent,
+        beforeSend,
         timers: this.timers,
       });
     } catch (err) {

@@ -119,7 +119,11 @@ opposés) :
   partir ; un ordre pas encore parti à la réponse de 3 s (« rien envoyé »)
   est coupé et ne part jamais plus tard. Envoyés, ils sont confirmés de la
   même façon (lectures 5 s et 20 s plus tard). Une commande en file avant une
-  extinction du même point d’accès ne part jamais après elle.
+  extinction du même point d’accès ne part jamais après elle : une
+  extinction coupe tout allumage de son point d’accès pas encore parti
+  (connexion en cours comprise, revérifié au premier octet) ; un allumage
+  déjà parti qui arrive chez Aqara après elle ne compte jamais comme un
+  changement plus récent : l’extinction est renvoyée.
 
 ## Lectures et quota
 
@@ -141,7 +145,9 @@ toujours) ; une permission refusée sur une route (403, 2008, 2012, 2013,
 2014, 2022…) n’est jamais prise pour un refus des clés. Un renouvellement
 refusé (2006, 2007) met fin à l’autorisation : autorisez à nouveau. Un jeton
 d’accès refusé juste après qu’Aqara l’a renouvelé est « non lu », espacé
-(doublé jusqu’à une heure), jamais une fin d’autorisation.
+(doublé jusqu’à une heure), jamais une fin d’autorisation ; pendant cet
+espacement, aucun renouvellement n’est demandé (une extinction part avec le
+jeton courant et est réessayée plus tard).
 
 ## Dépannage
 
